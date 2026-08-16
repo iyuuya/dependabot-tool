@@ -1,0 +1,6 @@
+[tools]
+go = "1"
+
+[tasks.install]
+description = "Install dependabot-tool to GOBIN"
+run = "go install ./cmd/dependabot-tool"
