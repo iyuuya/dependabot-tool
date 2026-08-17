@@ -10,7 +10,7 @@ GitHub Dependabot alerts をローカルの依存関係グラフ・ロックフ�
 ## インストール
 
 ```sh
-go install github.com/iyuuya/dependabot-tool/cmd/dependabot-tool@latest
+go install github.com/iyuuya/dependabot-tool@latest
 ```
 
 mise を使う場合:
