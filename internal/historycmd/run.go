@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/guptarohit/asciigraph"
 )
 
 // Run is the entry point for the "history" subcommand. It shows the
@@ -107,6 +109,13 @@ func Run(args []string) error {
 	fmt.Printf("%-10s %-7s %-7s %-7s %-6s TITLE\n", "DATE", "PR", "BEFORE", "AFTER", "Δ")
 	fmt.Println(strings.Repeat("-", 120))
 
+	// series tracks active alert counts at each PR merge (before) and
+	// finally the current count, for the ASCII chart below. seriesTimes
+	// holds the corresponding timestamp for each point so the chart's
+	// X-axis can be labeled with real dates.
+	series := make([]float64, 0, len(prs)+1)
+	seriesTimes := make([]time.Time, 0, len(prs)+1)
+
 	for _, pr := range prs {
 		mergedAt, _ := parseDate(pr.MergedAt)
 
@@ -132,6 +141,8 @@ func Run(args []string) error {
 		after := countActiveAlerts(alerts, mergedAt)
 
 		delta := after - before
+		series = append(series, float64(before))
+		seriesTimes = append(seriesTimes, mergedAt)
 
 		fmt.Printf(
 			"%-10s #%-6d %7d %7d %6d %s\n",
@@ -151,8 +162,33 @@ func Run(args []string) error {
 	// ------------------------------------------------------------
 
 	current := countActiveAlerts(alerts, now)
+	series = append(series, float64(current))
+	seriesTimes = append(seriesTimes, now)
 
 	fmt.Printf("%-10s %-7s %-7s %7d\n", "CURRENT", "", "", current)
+	fmt.Println()
+
+	plotOptions := []asciigraph.Option{
+		asciigraph.Height(10),
+		asciigraph.Width(60),
+		asciigraph.Caption("Active alerts (PR merges → current)"),
+	}
+
+	// The X-axis maps each point's index onto [firstMergeUnix, nowUnix], so
+	// ticks are labeled with real dates. Points aren't evenly spaced in
+	// time (PRs merge irregularly), so tick dates are an approximation of
+	// where in the period each point falls, not an exact per-point date.
+	if minT, maxT := seriesTimes[0].Unix(), seriesTimes[len(seriesTimes)-1].Unix(); maxT > minT {
+		plotOptions = append(plotOptions,
+			asciigraph.XAxisRange(float64(minT), float64(maxT)),
+			asciigraph.XAxisTickCount(5),
+			asciigraph.XAxisValueFormatter(func(x float64) string {
+				return time.Unix(int64(x), 0).UTC().Format("2006-01-02")
+			}),
+		)
+	}
+
+	fmt.Println(asciigraph.Plot(series, plotOptions...))
 	fmt.Println()
 
 	// ------------------------------------------------------------
