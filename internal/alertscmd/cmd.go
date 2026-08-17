@@ -59,7 +59,7 @@ func Run(args []string) error {
 	repo := fs.String("repo", "", "owner/repo (省略時は gh repo view で自動判定)")
 	state := fs.String("state", "open", fmt.Sprintf("取得する state のカンマ区切り (%s)、'all' で全件。デフォルト: open", strings.Join(validStates, "/")))
 	severity := fs.String("severity", "", "severity のカンマ区切り (low/medium/high/critical)")
-	ecosystem := fs.String("ecosystem", "", "ecosystem のカンマ区切り (pip/npm/composer/...)")
+	ecosystem := fs.String("ecosystem", "", "ecosystem のカンマ区切り (pip/npm/rubygems/...)")
 	pkg := fs.String("package", "", "パッケージ名のカンマ区切り")
 	scope := fs.String("scope", "", "依存スコープで絞る (runtime/development)")
 	minSeverity := fs.String("min-severity", "", "この severity 以上だけ表示 (low/medium/high/critical)")

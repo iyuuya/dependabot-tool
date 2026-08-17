@@ -60,10 +60,10 @@ func inVulnerableRange(version, spec string) *bool {
 func boolPtr(b bool) *bool { return &b }
 
 // --------------------------------------------------------------------------
-// 依存制約 (poetry / npm) が特定バージョンを許容するかの判定
+// 依存制約 (poetry / npm / bundler) が特定バージョンを許容するかの判定
 // --------------------------------------------------------------------------
 
-var constraintTokenRe = regexp.MustCompile(`(===|==|!=|<=|>=|~=|\^|~|<|>)?\s*(v?\d[^\s,|]*|\*|[xX])`)
+var constraintTokenRe = regexp.MustCompile(`(===|==|!=|<=|>=|~=|~>|\^|~|<|>|=)?\s*(v?\d[^\s,|]*|\*|[xX])`)
 var wildcardRe = regexp.MustCompile(`^v?(\d+(?:\.\d+)*)\.(?:\*|[xX])$`)
 var opaqueRe = regexp.MustCompile(`(git|https?|file|link|workspace|npm|catalog|portal|patch)[:+]`)
 var hyphenRe = regexp.MustCompile(`^(v?[\w.+-]+)\s+-\s+(v?[\w.+-]+)$`)
@@ -138,11 +138,15 @@ func expand(op, raw string) ([]bound, bool) {
 			index = 1
 		}
 		return []bound{{">=", raw}, {"<", nextVersion(release, index)}}, true
-	case "~=":
-		if len(release) < 2 {
-			return nil, false
+	case "~=", "~>":
+		// poetry ~= / bundler ~> : bump the second-to-last component
+		// ~> 1.2   => >= 1.2,   < 2.0
+		// ~> 1.2.3 => >= 1.2.3, < 1.3.0
+		index := 0
+		if len(release) >= 2 {
+			index = len(release) - 2
 		}
-		return []bound{{">=", raw}, {"<", nextVersion(release, len(release)-2)}}, true
+		return []bound{{">=", raw}, {"<", nextVersion(release, index)}}, true
 	default:
 		return nil, false
 	}

@@ -22,16 +22,18 @@ func normalizePypi(name string) string {
 // LocalVersions resolves the actual local version of a package from
 // manifest_path and package name.
 type LocalVersions struct {
-	root   string
-	poetry map[string]map[string]string   // lock path -> normalized name -> version
-	bun    map[string]map[string][]string // lock path -> name -> versions
+	root    string
+	poetry  map[string]map[string]string   // lock path -> normalized name -> version
+	bun     map[string]map[string][]string // lock path -> name -> versions
+	bundler map[string]map[string]string   // lock path -> normalized name -> version
 }
 
 func newLocalVersions(root string) *LocalVersions {
 	return &LocalVersions{
-		root:   root,
-		poetry: map[string]map[string]string{},
-		bun:    map[string]map[string][]string{},
+		root:    root,
+		poetry:  map[string]map[string]string{},
+		bun:     map[string]map[string][]string{},
+		bundler: map[string]map[string]string{},
 	}
 }
 
@@ -141,9 +143,54 @@ func (l *LocalVersions) resolve(ecosystem, manifestPath, name string) ([]string,
 		rel, _ := filepath.Rel(l.root, lock)
 		return sorted, rel
 
+	case "rubygems", "bundler":
+		candidates := []string{
+			filepath.Join(manifestDir, "Gemfile.lock"),
+			filepath.Join(manifestDir, "gems.locked"),
+			filepath.Join(l.root, "Gemfile.lock"),
+			filepath.Join(l.root, "gems.locked"),
+		}
+		// manifest_path が Gemfile.lock 自身のときも同じディレクトリを見る
+		seen := map[string]bool{}
+		for _, lock := range candidates {
+			if seen[lock] {
+				continue
+			}
+			seen[lock] = true
+			table := l.loadBundler(lock)
+			if len(table) == 0 {
+				continue
+			}
+			if version, ok := table[normalizeGem(name)]; ok && version != "" {
+				rel, _ := filepath.Rel(l.root, lock)
+				return []string{version}, rel
+			}
+		}
+		return nil, "not-found"
+
 	default:
 		return nil, "unsupported:" + ecosystem
 	}
+}
+
+func (l *LocalVersions) loadBundler(lock string) map[string]string {
+	if t, ok := l.bundler[lock]; ok {
+		return t
+	}
+	result := map[string]string{}
+	if info, err := os.Stat(lock); err == nil && !info.IsDir() {
+		if data, err := os.ReadFile(lock); err == nil {
+			parsed := parseBundlerLock(string(data))
+			for _, spec := range parsed.specs {
+				if spec.name == "" || spec.version == "" {
+					continue
+				}
+				result[normalizeGem(spec.name)] = spec.version
+			}
+		}
+	}
+	l.bundler[lock] = result
+	return result
 }
 
 // --------------------------------------------------------------------------

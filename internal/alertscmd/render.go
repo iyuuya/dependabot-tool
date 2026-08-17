@@ -194,8 +194,11 @@ func buildGroups(rows []Row, graphs *GraphCache) []Group {
 	var order []groupKey
 	for _, row := range rows {
 		key := row.Name
-		if row.Ecosystem == "pip" {
+		switch row.Ecosystem {
+		case "pip":
 			key = normalizePypi(row.Name)
+		case "rubygems", "bundler":
+			key = normalizeGem(row.Name)
 		}
 		gk := groupKey{row.Ecosystem, row.LocalSource, key}
 		if _, ok := buckets[gk]; !ok {

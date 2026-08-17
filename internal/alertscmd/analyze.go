@@ -63,9 +63,13 @@ func buildHint(graph *DependencyGraph, name, target, kind string, blockers []Blo
 	if kind == "direct" {
 		manifest := "pyproject.toml"
 		follow := "poetry lock"
-		if graph.Ecosystem != "pip" {
+		switch graph.Ecosystem {
+		case "npm":
 			manifest = "package.json"
 			follow = "bun install"
+		case "rubygems", "bundler":
+			manifest = "Gemfile"
+			follow = "bundle update " + name
 		}
 		seen := map[string]bool{}
 		var currents []string
@@ -80,10 +84,14 @@ func buildHint(graph *DependencyGraph, name, target, kind string, blockers []Blo
 		current := strings.Join(currents, ", ")
 		return manifest + " の " + name + " (" + current + ") を " + target + " 以上へ書き換え → " + prefix + follow
 	}
-	if graph.Ecosystem == "pip" {
+	switch graph.Ecosystem {
+	case "pip":
 		return prefix + "poetry update " + name
+	case "rubygems", "bundler":
+		return prefix + "bundle update " + name
+	default:
+		return prefix + "bun update " + name
 	}
-	return prefix + "bun update " + name
 }
 
 func analyze(graph *DependencyGraph, name string, nodeIDs []string, target, gap string) Analysis {

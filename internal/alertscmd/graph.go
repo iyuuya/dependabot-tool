@@ -76,8 +76,11 @@ func (g *DependencyGraph) label(nodeID string) string {
 
 func (g *DependencyGraph) lookup(name string) []string {
 	key := name
-	if g.Ecosystem == "pip" {
+	switch g.Ecosystem {
+	case "pip":
 		key = normalizePypi(name)
+	case "rubygems", "bundler":
+		key = normalizeGem(name)
 	}
 	return g.ByName[key]
 }
@@ -387,6 +390,10 @@ func (c *GraphCache) get(ecosystem, source string) *DependencyGraph {
 			}
 		} else if ecosystem == "npm" && base == "bun.lock" {
 			if g, err := buildNpmGraph(path, c.root); err == nil {
+				graph = g
+			}
+		} else if (ecosystem == "rubygems" || ecosystem == "bundler") && (base == "Gemfile.lock" || base == "gems.locked") {
+			if g, err := buildBundlerGraph(path, c.root); err == nil {
 				graph = g
 			}
 		}
