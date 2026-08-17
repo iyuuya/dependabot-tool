@@ -1,6 +1,9 @@
 package alertscmd
 
-import "strings"
+import (
+	"path/filepath"
+	"strings"
+)
 
 // --------------------------------------------------------------------------
 // 「何を上げればよいか」「どれくらい上げやすいか」の判定
@@ -66,7 +69,16 @@ func buildHint(graph *DependencyGraph, name, target, kind string, blockers []Blo
 		switch graph.Ecosystem {
 		case "npm":
 			manifest = "package.json"
-			follow = "bun install"
+			switch filepath.Base(graph.LockPath) {
+			case "package-lock.json", "npm-shrinkwrap.json":
+				follow = "npm install"
+			case "pnpm-lock.yaml":
+				follow = "pnpm install"
+			case "yarn.lock":
+				follow = "yarn install"
+			default:
+				follow = "bun install"
+			}
 		case "rubygems", "bundler":
 			manifest = "Gemfile"
 			follow = "bundle update " + name
@@ -89,6 +101,16 @@ func buildHint(graph *DependencyGraph, name, target, kind string, blockers []Blo
 		return prefix + "poetry update " + name
 	case "rubygems", "bundler":
 		return prefix + "bundle update " + name
+	case "npm":
+		switch filepath.Base(graph.LockPath) {
+		case "package-lock.json", "npm-shrinkwrap.json":
+			return prefix + "npm update " + name
+		case "pnpm-lock.yaml":
+			return prefix + "pnpm update " + name
+		case "yarn.lock":
+			return prefix + "yarn upgrade " + name
+		}
+		return prefix + "bun update " + name
 	default:
 		return prefix + "bun update " + name
 	}

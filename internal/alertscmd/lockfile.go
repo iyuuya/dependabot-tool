@@ -4,7 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"sort"
 	"strings"
 )
 
@@ -26,6 +25,7 @@ type LocalVersions struct {
 	poetry  map[string]map[string]string   // lock path -> normalized name -> version
 	bun     map[string]map[string][]string // lock path -> name -> versions
 	bundler map[string]map[string]string   // lock path -> normalized name -> version
+	js      map[string]map[string][]string // lock path -> name -> versions
 }
 
 func newLocalVersions(root string) *LocalVersions {
@@ -34,6 +34,7 @@ func newLocalVersions(root string) *LocalVersions {
 		poetry:  map[string]map[string]string{},
 		bun:     map[string]map[string][]string{},
 		bundler: map[string]map[string]string{},
+		js:      map[string]map[string][]string{},
 	}
 }
 
@@ -127,21 +128,22 @@ func (l *LocalVersions) resolve(ecosystem, manifestPath, name string) ([]string,
 		return nil, "not-found"
 
 	case "npm":
-		lock := filepath.Join(manifestDir, "bun.lock")
-		if info, err := os.Stat(lock); err != nil || info.IsDir() {
+		candidates := []string{
+			filepath.Join(manifestDir, "package-lock.json"),
+			filepath.Join(manifestDir, "npm-shrinkwrap.json"),
+			filepath.Join(manifestDir, "pnpm-lock.yaml"),
+			filepath.Join(manifestDir, "yarn.lock"),
+			filepath.Join(manifestDir, "bun.lock"),
+		}
+		for _, lock := range candidates {
+			versions := l.loadJSLock(lock)[name]
+			if len(versions) == 0 {
+				continue
+			}
 			rel, _ := filepath.Rel(l.root, lock)
-			return nil, rel + " なし"
+			return sortedJSVersions(versions), rel
 		}
-		versions := l.loadBun(lock)[name]
-		if len(versions) == 0 {
-			return nil, "not-installed"
-		}
-		sorted := append([]string(nil), versions...)
-		sort.SliceStable(sorted, func(i, j int) bool {
-			return bunVersionSortLess(sorted[i], sorted[j])
-		})
-		rel, _ := filepath.Rel(l.root, lock)
-		return sorted, rel
+		return nil, "not-found"
 
 	case "rubygems", "bundler":
 		candidates := []string{
@@ -171,6 +173,27 @@ func (l *LocalVersions) resolve(ecosystem, manifestPath, name string) ([]string,
 	default:
 		return nil, "unsupported:" + ecosystem
 	}
+}
+
+func (l *LocalVersions) loadJSLock(lock string) map[string][]string {
+	if cached, ok := l.js[lock]; ok {
+		return cached
+	}
+	var versions map[string][]string
+	switch filepath.Base(lock) {
+	case "package-lock.json", "npm-shrinkwrap.json":
+		versions = loadPackageLock(lock)
+	case "pnpm-lock.yaml":
+		versions = loadPnpmLock(lock)
+	case "yarn.lock":
+		versions = loadYarnClassicLock(lock)
+	case "bun.lock":
+		versions = l.loadBun(lock)
+	default:
+		versions = map[string][]string{}
+	}
+	l.js[lock] = versions
+	return versions
 }
 
 func (l *LocalVersions) loadBundler(lock string) map[string]string {

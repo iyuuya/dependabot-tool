@@ -27,7 +27,7 @@ dependabot-tool <alerts|history> [flags]
 
 ### `alerts`
 
-Dependabot alerts を取得し、ローカルのロックファイル（`poetry.lock` / `bun.lock` / `Gemfile.lock`）や依存関係グラフと突き合わせて、深刻度・対応のしやすさ・影響有無などを一覧表示します。
+Dependabot alerts を取得し、ローカルのロックファイル（`poetry.lock` / JavaScript lockfiles / `Gemfile.lock`）や依存関係グラフと突き合わせて、深刻度・対応のしやすさ・影響有無などを一覧表示します。
 
 ```sh
 dependabot-tool alerts [flags]
@@ -79,7 +79,7 @@ dependabot-tool history [repo] [flags]
 現時点でローカルバージョンの解決に対応しているのは以下の組み合わせです。
 
 - `pip`: `poetry.lock`
-- `npm`: `bun.lock`
+- `npm`: `bun.lock` / `package-lock.json` / `npm-shrinkwrap.json` / `pnpm-lock.yaml` / `yarn.lock`
 - `rubygems`: `Gemfile.lock`（`Gemfile` / `gems.locked` も探索対象）
 
 それ以外の ecosystem は `local_version` が `unsupported:<ecosystem>` として表示されます。

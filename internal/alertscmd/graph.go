@@ -392,6 +392,18 @@ func (c *GraphCache) get(ecosystem, source string) *DependencyGraph {
 			if g, err := buildNpmGraph(path, c.root); err == nil {
 				graph = g
 			}
+		} else if ecosystem == "npm" && (base == "package-lock.json" || base == "npm-shrinkwrap.json") {
+			if g, err := buildPackageLockGraph(path, c.root); err == nil {
+				graph = g
+			}
+		} else if ecosystem == "npm" && base == "pnpm-lock.yaml" {
+			if g, err := buildPnpmGraph(path, c.root); err == nil {
+				graph = g
+			}
+		} else if ecosystem == "npm" && base == "yarn.lock" {
+			if g, err := buildYarnClassicGraph(path, c.root); err == nil {
+				graph = g
+			}
 		} else if (ecosystem == "rubygems" || ecosystem == "bundler") && (base == "Gemfile.lock" || base == "gems.locked") {
 			if g, err := buildBundlerGraph(path, c.root); err == nil {
 				graph = g
