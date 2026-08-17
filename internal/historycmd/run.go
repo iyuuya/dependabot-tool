@@ -15,7 +15,7 @@ func Run(args []string) error {
 
 	days := fs.Int("days", 14, "Show PRs merged in the last N days. Default: 14")
 	since := fs.String("since", "", "Show PRs merged on/after YYYY-MM-DD. Overrides --days.")
-	refresh := fs.Bool("refresh", false, "Bypass the local cache and re-fetch from gh api, overwriting the cached result.")
+	refreshFlag := fs.String("refresh", "", "Comma-separated list of caches to bypass and re-fetch from gh api instead of using the on-disk cache: alerts, open, closed, or all. Default: \"\" (use every cache). closed is expensive: it re-walks the repo's entire closed-PR history instead of just the incremental update.")
 
 	fs.Usage = func() {
 		fmt.Fprintln(fs.Output(), "usage: dependabot-tool history [repo] [flags]")
@@ -64,7 +64,12 @@ func Run(args []string) error {
 	// データ取得
 	// ------------------------------------------------------------
 
-	alerts, prs, err := fetchHistoryData(repo, now, sinceTime, *days, *since, *refresh)
+	refresh, err := parseRefreshFlag(*refreshFlag)
+	if err != nil {
+		return err
+	}
+
+	alerts, prs, err := fetchHistoryData(repo, now, sinceTime, refresh)
 	if err != nil {
 		return err
 	}

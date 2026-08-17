@@ -25,9 +25,10 @@ type Alert struct {
 
 // PullRequest models the subset of a GitHub pull request we care about.
 type PullRequest struct {
-	Number   int    `json:"number"`
-	Title    string `json:"title"`
-	MergedAt string `json:"merged_at"`
+	Number    int    `json:"number"`
+	Title     string `json:"title"`
+	MergedAt  string `json:"merged_at"`
+	UpdatedAt string `json:"updated_at"`
 }
 
 // parseDate parses a GitHub timestamp (RFC3339, optionally with fractional
@@ -56,24 +57,80 @@ func getAlerts(repo string) ([]Alert, error) {
 	return ghAPI[Alert](fmt.Sprintf("repos/%s/dependabot/alerts?per_page=100", repo))
 }
 
-// getDependabotPRs fetches closed pull requests for repo and returns those
-// merged on/after since, sorted by merge time ascending. It mirrors
-// get_dependabot_prs() from dependabot_history.py: the GitHub API paginates
-// PRs by updated_at rather than created_at, so a broad fetch is filtered
-// down by merged_at locally.
-func getDependabotPRs(repo string, since time.Time) ([]PullRequest, error) {
-	fmt.Fprintln(os.Stderr, "Fetching pull requests...")
+// getOpenDependabotPRs fetches all currently open pull requests for repo.
+// Open PR counts are small enough that fetching the full set every time is
+// cheap, unlike walking the repo's entire closed-PR history.
+func getOpenDependabotPRs(repo string) ([]PullRequest, error) {
+	fmt.Fprintln(os.Stderr, "Fetching open pull requests...")
+
+	endpoint := fmt.Sprintf("repos/%s/pulls?state=open&per_page=100", repo)
+
+	return ghAPI[PullRequest](endpoint)
+}
+
+// getClosedDependabotPRsSince fetches closed pull requests for repo, paging
+// newest-updated-first (mirroring the API's sort=updated&direction=desc
+// order) and stopping as soon as it reaches a PR whose updated_at is not
+// after sinceUpdatedAt. A zero sinceUpdatedAt fetches the full closed-PR
+// history. Callers combine the result with a previously cached set of
+// closed PRs rather than re-fetching everything on every run.
+func getClosedDependabotPRsSince(repo string, sinceUpdatedAt time.Time) ([]PullRequest, error) {
+	fmt.Fprintln(os.Stderr, "Fetching closed pull requests...")
 
 	endpoint := fmt.Sprintf(
 		"repos/%s/pulls?state=closed&sort=updated&direction=desc&per_page=100",
 		repo,
 	)
 
-	prs, err := ghAPI[PullRequest](endpoint)
-	if err != nil {
-		return nil, err
+	const perPage = 100
+
+	var result []PullRequest
+
+	for page := 1; ; page++ {
+		items, err := ghAPIPage[PullRequest](endpoint, page)
+		if err != nil {
+			return nil, err
+		}
+
+		if len(items) == 0 {
+			break
+		}
+
+		kept, stop := filterPageSince(items, sinceUpdatedAt)
+		result = append(result, kept...)
+
+		if stop || len(items) < perPage {
+			break
+		}
 	}
 
+	return result, nil
+}
+
+// filterPageSince processes a single page of pull requests sorted
+// newest-updated-first, keeping entries newer than sinceUpdatedAt. It
+// returns stop=true as soon as it reaches an entry that is not newer than
+// sinceUpdatedAt, signalling that the remaining (older) pages are already
+// covered by the cache and pagination can stop. A zero sinceUpdatedAt never
+// stops early.
+func filterPageSince(items []PullRequest, sinceUpdatedAt time.Time) (kept []PullRequest, stop bool) {
+	for _, pr := range items {
+		updatedAt, ok := parseDate(pr.UpdatedAt)
+		if ok && !sinceUpdatedAt.IsZero() && !updatedAt.After(sinceUpdatedAt) {
+			return kept, true
+		}
+
+		kept = append(kept, pr)
+	}
+
+	return kept, false
+}
+
+// filterMergedSince keeps only pull requests merged on/after since, sorted
+// by merge time ascending. Pull requests without a merged_at (e.g. still
+// open, or closed without merging) are dropped. Mirrors the filtering
+// previously done inline in getDependabotPRs.
+func filterMergedSince(prs []PullRequest, since time.Time) []PullRequest {
 	var result []PullRequest
 
 	for _, pr := range prs {
@@ -95,7 +152,7 @@ func getDependabotPRs(repo string, since time.Time) ([]PullRequest, error) {
 		return ti.Before(tj)
 	})
 
-	return result, nil
+	return result
 }
 
 // countActiveAlerts counts the alerts that were active (open) at the given

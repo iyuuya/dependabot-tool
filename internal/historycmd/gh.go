@@ -11,23 +11,32 @@ import (
 	"strings"
 )
 
-// ghAPI runs `gh api --paginate <endpoint>` and decodes the (possibly
-// multi-page) JSON output into a slice of T. Each page can be either a JSON
-// array or a single JSON object, mirroring gh's --paginate behaviour; this
-// mirrors the Python gh_api() helper which concatenates and decodes pages
-// one JSON value at a time.
-func ghAPI[T any](endpoint string) ([]T, error) {
-	cmd := exec.Command("gh", "api", "--paginate", endpoint)
+// runGhAPI runs `gh api <args...>` and returns trimmed stdout.
+func runGhAPI(args ...string) (string, error) {
+	cmd := exec.Command("gh", append([]string{"api"}, args...)...)
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("gh api %s: %w: %s", endpoint, err, strings.TrimSpace(stderr.String()))
+		return "", fmt.Errorf("gh api %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(stderr.String()))
 	}
 
-	output := strings.TrimSpace(stdout.String())
+	return strings.TrimSpace(stdout.String()), nil
+}
+
+// ghAPI runs `gh api --paginate <endpoint>` and decodes the (possibly
+// multi-page) JSON output into a slice of T. Each page can be either a JSON
+// array or a single JSON object, mirroring gh's --paginate behaviour; this
+// mirrors the Python gh_api() helper which concatenates and decodes pages
+// one JSON value at a time.
+func ghAPI[T any](endpoint string) ([]T, error) {
+	output, err := runGhAPI("--paginate", endpoint)
+	if err != nil {
+		return nil, err
+	}
+
 	if output == "" {
 		return nil, nil
 	}
@@ -56,6 +65,34 @@ func ghAPI[T any](endpoint string) ([]T, error) {
 			return nil, fmt.Errorf("gh api %s: decoding value: %w", endpoint, err)
 		}
 		values = append(values, value)
+	}
+
+	return values, nil
+}
+
+// ghAPIPage runs `gh api <endpoint>` for a single page (appending
+// `page=<page>` to the query string) and decodes the JSON array response
+// into a slice of T. Unlike ghAPI, it does not follow pagination, so callers
+// can inspect a page's contents and decide whether to fetch the next one.
+func ghAPIPage[T any](endpoint string, page int) ([]T, error) {
+	sep := "&"
+	if !strings.Contains(endpoint, "?") {
+		sep = "?"
+	}
+	pagedEndpoint := fmt.Sprintf("%s%spage=%d", endpoint, sep, page)
+
+	output, err := runGhAPI(pagedEndpoint)
+	if err != nil {
+		return nil, err
+	}
+
+	if output == "" {
+		return nil, nil
+	}
+
+	var values []T
+	if err := json.Unmarshal([]byte(output), &values); err != nil {
+		return nil, fmt.Errorf("gh api %s: decoding page: %w", pagedEndpoint, err)
 	}
 
 	return values, nil
